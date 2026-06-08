@@ -24,12 +24,22 @@ func main() {
 	dbConn := getEnv("DB_CONN", "postgres://postgres:postgres@localhost:5432/dccooling?sslmode=disable")
 	modbusAddr := getEnv("MODBUS_ADDR", "localhost:5020")
 	dingtalkWebhook := getEnv("DINGTALK_WEBHOOK", "")
-	itPowerStr := getEnv("IT_POWER", "2000")
+	itPowerStr := getEnv("IT_POWER", "1700")
+	distributionLossStr := getEnv("DISTRIBUTION_LOSS", "250")
+	otherInfraPowerStr := getEnv("OTHER_INFRA_POWER", "50")
 	httpPort := getEnv("HTTP_PORT", ":8080")
 
-	itPower := 2000.0
+	itPower := 1700.0
 	if v, err := strconv.ParseFloat(itPowerStr, 64); err == nil {
 		itPower = v
+	}
+	distributionLoss := 250.0
+	if v, err := strconv.ParseFloat(distributionLossStr, 64); err == nil {
+		distributionLoss = v
+	}
+	otherInfraPower := 50.0
+	if v, err := strconv.ParseFloat(otherInfraPowerStr, 64); err == nil {
+		otherInfraPower = v
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -50,13 +60,15 @@ func main() {
 		wsHub.BroadcastDeviceUpdate(json.RawMessage(raw))
 	}
 
-	pueCalc := pue.New(database, itPower)
-	pueCalc.OnPUEUpdate = func(pueValue, itPwr, coolingPower, totalPower float64) {
+	pueCalc := pue.New(database, itPower, distributionLoss, otherInfraPower)
+	pueCalc.OnPUEUpdate = func(pueValue, itPwr, coolingPower, distLoss, otherInfra, totalFacilityPower float64) {
 		data, _ := json.Marshal(map[string]float64{
-			"pue":           pueValue,
-			"it_power":      itPwr,
-			"cooling_power": coolingPower,
-			"total_power":   totalPower,
+			"pue":                   pueValue,
+			"it_power":             itPwr,
+			"cooling_power":        coolingPower,
+			"distribution_loss":    distLoss,
+			"other_infra_power":    otherInfra,
+			"total_facility_power": totalFacilityPower,
 		})
 		wsHub.BroadcastPUEUpdate(json.RawMessage(data))
 	}
@@ -103,6 +115,8 @@ func main() {
 	log.Printf("  DB: %s", dbConn)
 	log.Printf("  Modbus: %s", modbusAddr)
 	log.Printf("  IT Power: %.0f kW", itPower)
+	log.Printf("  Distribution Loss: %.0f kW", distributionLoss)
+	log.Printf("  Other Infra Power: %.0f kW", otherInfraPower)
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

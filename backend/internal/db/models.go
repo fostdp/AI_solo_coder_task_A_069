@@ -31,11 +31,13 @@ type DeviceData struct {
 }
 
 type PUERecord struct {
-	Time        time.Time
-	ITPower     float64
-	CoolingPower float64
-	TotalPower  float64
-	PUEValue    float64
+	Time               time.Time
+	ITPower            float64
+	CoolingPower       float64
+	DistributionLoss   float64
+	OtherInfraPower    float64
+	TotalFacilityPower float64
+	PUEValue           float64
 }
 
 type CoolingAllocation struct {

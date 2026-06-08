@@ -73,9 +73,9 @@ func (db *DB) GetDeviceData24h(ctx context.Context, deviceID int) ([]DeviceData,
 
 func (db *DB) InsertPUERecord(ctx context.Context, rec *PUERecord) error {
 	_, err := db.pool.Exec(ctx,
-		`INSERT INTO pue_records (time, it_power, cooling_power, total_power, pue_value)
-		 VALUES ($1, $2, $3, $4, $5)`,
-		rec.Time, rec.ITPower, rec.CoolingPower, rec.TotalPower, rec.PUEValue,
+		`INSERT INTO pue_records (time, it_power, cooling_power, distribution_loss, other_infra_power, total_facility_power, pue_value)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		rec.Time, rec.ITPower, rec.CoolingPower, rec.DistributionLoss, rec.OtherInfraPower, rec.TotalFacilityPower, rec.PUEValue,
 	)
 	if err != nil {
 		return fmt.Errorf("insert pue record: %w", err)
@@ -85,7 +85,7 @@ func (db *DB) InsertPUERecord(ctx context.Context, rec *PUERecord) error {
 
 func (db *DB) GetPUERecords(ctx context.Context, hours int) ([]PUERecord, error) {
 	rows, err := db.pool.Query(ctx,
-		`SELECT time, it_power, cooling_power, total_power, pue_value
+		`SELECT time, it_power, cooling_power, distribution_loss, other_infra_power, total_facility_power, pue_value
 		 FROM pue_records
 		 WHERE time >= NOW() - make_interval(hours => $1)
 		 ORDER BY time ASC`,
@@ -99,7 +99,7 @@ func (db *DB) GetPUERecords(ctx context.Context, hours int) ([]PUERecord, error)
 	var result []PUERecord
 	for rows.Next() {
 		var r PUERecord
-		if err := rows.Scan(&r.Time, &r.ITPower, &r.CoolingPower, &r.TotalPower, &r.PUEValue); err != nil {
+		if err := rows.Scan(&r.Time, &r.ITPower, &r.CoolingPower, &r.DistributionLoss, &r.OtherInfraPower, &r.TotalFacilityPower, &r.PUEValue); err != nil {
 			return nil, fmt.Errorf("scan pue record: %w", err)
 		}
 		result = append(result, r)

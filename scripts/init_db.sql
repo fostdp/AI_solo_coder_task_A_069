@@ -33,7 +33,9 @@ CREATE TABLE IF NOT EXISTS pue_records (
     time TIMESTAMPTZ NOT NULL,
     it_power FLOAT NOT NULL,
     cooling_power FLOAT NOT NULL,
-    total_power FLOAT NOT NULL,
+    distribution_loss FLOAT NOT NULL DEFAULT 0,
+    other_infra_power FLOAT NOT NULL DEFAULT 0,
+    total_facility_power FLOAT NOT NULL,
     pue_value FLOAT NOT NULL
 );
 
@@ -231,3 +233,18 @@ END;
 $$ LANGUAGE plpgsql;
 
 SELECT continuous_aggregate_device_5min();
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'pue_records' AND column_name = 'total_power') THEN
+        ALTER TABLE pue_records RENAME COLUMN total_power TO total_facility_power;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'pue_records' AND column_name = 'distribution_loss') THEN
+        ALTER TABLE pue_records ADD COLUMN distribution_loss FLOAT NOT NULL DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'pue_records' AND column_name = 'other_infra_power') THEN
+        ALTER TABLE pue_records ADD COLUMN other_infra_power FLOAT NOT NULL DEFAULT 0;
+    END IF;
+END $$;

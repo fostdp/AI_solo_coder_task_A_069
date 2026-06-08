@@ -9,18 +9,22 @@ import (
 )
 
 type PUACalculator struct {
-	db         *db.DB
-	itPower    float64
-	stopCh     chan struct{}
-	OnPUEUpdate func(pue float64, itPower, coolingPower, totalPower float64)
-	OnHighPUE   func(pue float64)
+	db               *db.DB
+	itPower          float64
+	distributionLoss float64
+	otherInfraPower  float64
+	stopCh           chan struct{}
+	OnPUEUpdate      func(pue float64, itPower, coolingPower, distributionLoss, otherInfraPower, totalFacilityPower float64)
+	OnHighPUE        func(pue float64)
 }
 
-func New(database *db.DB, itPower float64) *PUACalculator {
+func New(database *db.DB, itPower float64, distributionLoss float64, otherInfraPower float64) *PUACalculator {
 	return &PUACalculator{
-		db:      database,
-		itPower: itPower,
-		stopCh:  make(chan struct{}),
+		db:               database,
+		itPower:          itPower,
+		distributionLoss: distributionLoss,
+		otherInfraPower:  otherInfraPower,
+		stopCh:           make(chan struct{}),
 	}
 }
 
@@ -70,16 +74,18 @@ func (p *PUACalculator) calculate(ctx context.Context) {
 		coolingPower += history[len(history)-1].Power
 	}
 
-	totalPower := p.itPower + coolingPower
-	pueValue := totalPower / p.itPower
+	totalFacilityPower := p.itPower + coolingPower + p.distributionLoss + p.otherInfraPower
+	pueValue := totalFacilityPower / p.itPower
 
 	now := time.Now()
 	rec := &db.PUERecord{
-		Time:         now,
-		ITPower:      p.itPower,
-		CoolingPower: coolingPower,
-		TotalPower:   totalPower,
-		PUEValue:     pueValue,
+		Time:               now,
+		ITPower:            p.itPower,
+		CoolingPower:       coolingPower,
+		DistributionLoss:   p.distributionLoss,
+		OtherInfraPower:    p.otherInfraPower,
+		TotalFacilityPower: totalFacilityPower,
+		PUEValue:           pueValue,
 	}
 
 	if err := p.db.InsertPUERecord(ctx, rec); err != nil {
@@ -87,7 +93,7 @@ func (p *PUACalculator) calculate(ctx context.Context) {
 	}
 
 	if p.OnPUEUpdate != nil {
-		p.OnPUEUpdate(pueValue, p.itPower, coolingPower, totalPower)
+		p.OnPUEUpdate(pueValue, p.itPower, coolingPower, p.distributionLoss, p.otherInfraPower, totalFacilityPower)
 	}
 
 	if pueValue > 1.4 && p.OnHighPUE != nil {
@@ -101,4 +107,12 @@ func (p *PUACalculator) Stop() {
 
 func (p *PUACalculator) SetITPower(power float64) {
 	p.itPower = power
+}
+
+func (p *PUACalculator) SetDistributionLoss(loss float64) {
+	p.distributionLoss = loss
+}
+
+func (p *PUACalculator) SetOtherInfraPower(power float64) {
+	p.otherInfraPower = power
 }

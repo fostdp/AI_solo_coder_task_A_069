@@ -43,7 +43,9 @@ services:
       DB_CONN: postgres://postgres:postgres@timescaledb:5432/dccooling?sslmode=disable
       MODBUS_ADDR: modbus-simulator:5020
       DINGTALK_WEBHOOK: ""
-      IT_POWER: "2000"
+      IT_POWER: "1700"
+      DISTRIBUTION_LOSS: "250"
+      OTHER_INFRA_POWER: "50"
       HTTP_PORT: ":8080"
     depends_on:
       timescaledb:

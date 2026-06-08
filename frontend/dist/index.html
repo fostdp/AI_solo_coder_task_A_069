@@ -244,7 +244,7 @@ function genPUEHistory() {
   var now = new Date();
   for (var i = 23; i >= 0; i--) {
     var t = new Date(now.getTime() - i * 3600000);
-    data.push({ time: t, pue: 1.3 + Math.random() * 0.25, itPower: 2800 + Math.random() * 400, coolingPower: 900 + Math.random() * 300, totalPower: 3700 + Math.random() * 700 });
+    data.push({ time: t, pue: 1.38 + Math.random() * 0.25, itPower: 1700 + Math.random() * 200, coolingPower: 900 + Math.random() * 300, distributionLoss: 240 + Math.random() * 20, otherInfraPower: 45 + Math.random() * 10, totalFacilityPower: 2885 + Math.random() * 530 });
   }
   return data;
 }
@@ -540,7 +540,9 @@ function renderPUEChart() {
   statsEl.innerHTML = '<div class="stat-card"><div class="stat-card-label">当前PUE</div><div class="stat-card-value" style="color:var(--accent)">' + latest.pue.toFixed(2) + '</div></div>' +
     '<div class="stat-card"><div class="stat-card-label">IT负载(kW)</div><div class="stat-card-value" style="color:var(--accent2)">' + latest.itPower.toFixed(0) + '</div></div>' +
     '<div class="stat-card"><div class="stat-card-label">制冷功率(kW)</div><div class="stat-card-value" style="color:var(--yellow)">' + latest.coolingPower.toFixed(0) + '</div></div>' +
-    '<div class="stat-card"><div class="stat-card-label">总功率(kW)</div><div class="stat-card-value">' + latest.totalPower.toFixed(0) + '</div></div>';
+    '<div class="stat-card"><div class="stat-card-label">配电损耗(kW)</div><div class="stat-card-value" style="color:#ff8844">' + (latest.distributionLoss||0).toFixed(0) + '</div></div>' +
+    '<div class="stat-card"><div class="stat-card-label">其他基础设施(kW)</div><div class="stat-card-value" style="color:#aa88ff">' + (latest.otherInfraPower||0).toFixed(0) + '</div></div>' +
+    '<div class="stat-card"><div class="stat-card-label">总设施功率(kW)</div><div class="stat-card-value">' + (latest.totalFacilityPower||latest.totalPower||0).toFixed(0) + '</div></div>';
 
   var ctx = document.getElementById('pue-chart').getContext('2d');
   if (state.charts.pue) state.charts.pue.destroy();
@@ -930,7 +932,9 @@ function handleWSMessage(msg) {
       latest.pue = msg.pue || latest.pue;
       latest.itPower = msg.it_power || latest.itPower;
       latest.coolingPower = msg.cooling_power || latest.coolingPower;
-      latest.totalPower = msg.total_power || latest.totalPower;
+      latest.distributionLoss = msg.distribution_loss || latest.distributionLoss || 0;
+      latest.otherInfraPower = msg.other_infra_power || latest.otherInfraPower || 0;
+      latest.totalFacilityPower = msg.total_facility_power || latest.totalFacilityPower || latest.totalPower || 0;
     }
     document.getElementById('pue-display').textContent = (msg.pue || latest.pue).toFixed(2);
     if (state.activeTab === 'pue') renderPUEChart();
