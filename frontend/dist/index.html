@@ -1,12 +1,991 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>自动驾驶仿真测试场景库管理平台</title>
-    <script type="module" crossorigin src="/assets/index-C49NN3zK.js"></script>
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据中心制冷系统能效优化平台</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+:root {
+  --bg: #0a0e1a;
+  --card: #131a2e;
+  --text: #e0e6f0;
+  --accent: #00d4ff;
+  --accent2: #0088ff;
+  --green: #00ff88;
+  --yellow: #ffcc00;
+  --red: #ff4455;
+  --border: #1e2a45;
+  --sidebar-w: 250px;
+  --right-panel-w: 320px;
+  --header-h: 60px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
+.header { position: fixed; top: 0; left: 0; right: 0; height: var(--header-h); background: linear-gradient(135deg, #0d1225 0%, #131a2e 100%); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; z-index: 100; }
+.header-title { font-size: 22px; font-weight: 700; letter-spacing: 2px; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header-pue { display: flex; align-items: baseline; gap: 8px; }
+.header-pue-label { font-size: 13px; color: #8899bb; }
+.header-pue-value { font-size: 36px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+.header-pue-unit { font-size: 14px; color: #8899bb; }
+.header-right { display: flex; align-items: center; gap: 20px; }
+.header-datetime { font-size: 14px; color: #8899bb; }
+.ws-status { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.ws-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+.ws-dot.connected { background: var(--green); animation: pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.sidebar { position: fixed; top: var(--header-h); left: 0; width: var(--sidebar-w); bottom: 0; background: var(--card); border-right: 1px solid var(--border); z-index: 90; display: flex; flex-direction: column; padding-top: 12px; }
+.nav-item { padding: 14px 24px; cursor: pointer; font-size: 15px; color: #8899bb; transition: all 0.25s; border-left: 3px solid transparent; display: flex; align-items: center; gap: 10px; }
+.nav-item:hover { color: var(--text); background: rgba(0,212,255,0.05); }
+.nav-item.active { color: var(--accent); border-left-color: var(--accent); background: rgba(0,212,255,0.08); }
+.nav-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.main { position: fixed; top: var(--header-h); left: var(--sidebar-w); right: 0; bottom: 0; overflow: hidden; transition: right 0.3s; }
+.main.panel-open { right: var(--right-panel-w); }
+.tab-content { display: none; width: 100%; height: 100%; }
+.tab-content.active { display: block; }
+#tab-3d { position: relative; }
+#three-container { width: 100%; height: 100%; }
+#three-labels { position: absolute; top: 0; left: 0; pointer-events: none; overflow: hidden; }
+.three-label { position: absolute; color: var(--text); font-size: 10px; background: rgba(19,26,46,0.85); padding: 1px 4px; border-radius: 2px; white-space: nowrap; transform: translate(-50%,-50%); pointer-events: none; }
+.right-panel { position: fixed; top: var(--header-h); right: 0; width: var(--right-panel-w); bottom: 0; background: var(--card); border-left: 1px solid var(--border); z-index: 90; transform: translateX(100%); transition: transform 0.3s; overflow-y: auto; }
+.right-panel.open { transform: translateX(0); }
+.right-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--border); }
+.right-panel-title { font-size: 16px; font-weight: 600; color: var(--accent); }
+.close-btn { background: none; border: none; color: #8899bb; font-size: 22px; cursor: pointer; transition: color 0.2s; }
+.close-btn:hover { color: var(--text); }
+.device-info { padding: 12px 16px; }
+.info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px solid rgba(30,42,69,0.5); }
+.info-label { color: #8899bb; }
+.info-value { color: var(--text); font-weight: 500; }
+.detail-charts { padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.detail-chart-box { background: rgba(10,14,26,0.6); border-radius: 8px; padding: 8px; }
+.detail-chart-title { font-size: 11px; color: #8899bb; margin-bottom: 4px; }
+.detail-chart-canvas { width: 100%; height: 100px; }
+.stat-cards { display: flex; gap: 16px; padding: 20px 24px; flex-wrap: wrap; }
+.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 24px; flex: 1; min-width: 140px; }
+.stat-card-label { font-size: 12px; color: #8899bb; margin-bottom: 6px; }
+.stat-card-value { font-size: 28px; font-weight: 700; }
+.stat-card-unit { font-size: 13px; color: #8899bb; margin-left: 4px; }
+.chart-container { padding: 0 24px 24px; height: calc(100% - 140px); position: relative; }
+.chart-container canvas { width: 100% !important; height: 100% !important; }
+.sankey-container { padding: 20px 24px; height: calc(100% - 60px); display: flex; flex-direction: column; }
+.sankey-svg { flex: 1; min-height: 0; }
+.sankey-table { margin-top: 12px; max-height: 200px; overflow-y: auto; }
+.sankey-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sankey-table th { background: rgba(0,212,255,0.1); color: var(--accent); padding: 8px 6px; text-align: left; position: sticky; top: 0; }
+.sankey-table td { padding: 6px; border-bottom: 1px solid var(--border); }
+.ranking-container { padding: 20px 24px; height: calc(100% - 60px); display: flex; flex-direction: column; }
+.ranking-chart { flex: 0 0 250px; position: relative; }
+.ranking-chart canvas { width: 100% !important; height: 100% !important; }
+.ranking-table-wrap { flex: 1; overflow-y: auto; margin-top: 12px; }
+.ranking-table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ranking-table-wrap th { background: rgba(0,212,255,0.1); color: var(--accent); padding: 8px 6px; text-align: left; position: sticky; top: 0; }
+.ranking-table-wrap td { padding: 6px; border-bottom: 1px solid var(--border); }
+.alert-container { padding: 20px 24px; height: calc(100% - 60px); overflow-y: auto; }
+.alert-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.alert-table th { background: rgba(0,212,255,0.1); color: var(--accent); padding: 10px 8px; text-align: left; position: sticky; top: 0; }
+.alert-table td { padding: 8px; border-bottom: 1px solid var(--border); }
+.badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-1 { background: rgba(255,204,0,0.15); color: var(--yellow); }
+.badge-2 { background: rgba(255,68,85,0.15); color: var(--red); }
+.ack-btn { background: rgba(0,212,255,0.15); color: var(--accent); border: 1px solid rgba(0,212,255,0.3); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
+.ack-btn:hover { background: rgba(0,212,255,0.3); }
+.ack-btn:disabled { opacity: 0.4; cursor: default; }
+.toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+.toast { padding: 12px 20px; border-radius: 8px; font-size: 13px; animation: toast-in 0.3s ease-out; max-width: 360px; }
+.toast-alert { background: rgba(255,68,85,0.9); color: #fff; }
+.toast-warn { background: rgba(255,204,0,0.9); color: #111; }
+@keyframes toast-in { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.fade-in { animation: fade-in 0.3s ease-out; }
+.cop-green { color: var(--green); }
+.cop-yellow { color: var(--yellow); }
+.cop-red { color: var(--red); }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #2a3a5a; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">数据中心制冷系统能效优化平台</div>
+  <div class="header-pue">
+    <span class="header-pue-label">实时PUE</span>
+    <span class="header-pue-value" id="pue-display">1.38</span>
+    <span class="header-pue-unit"></span>
+  </div>
+  <div class="header-right">
+    <div class="ws-status">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-status-text">未连接</span>
+    </div>
+    <div class="header-datetime" id="datetime"></div>
+  </div>
+</div>
+
+<div class="sidebar">
+  <div class="nav-item active" data-tab="3d">
+    <span class="nav-icon">🔲</span>3D流程图
+  </div>
+  <div class="nav-item" data-tab="pue">
+    <span class="nav-icon">📈</span>PUE趋势
+  </div>
+  <div class="nav-item" data-tab="sankey">
+    <span class="nav-icon">🔀</span>冷量分配
+  </div>
+  <div class="nav-item" data-tab="ranking">
+    <span class="nav-icon">🏆</span>能效排行
+  </div>
+  <div class="nav-item" data-tab="alerts">
+    <span class="nav-icon">⚠️</span>告警列表
+  </div>
+</div>
+
+<div class="main" id="main">
+  <div class="tab-content active" id="tab-3d">
+    <div id="three-container"></div>
+    <div id="three-labels"></div>
+  </div>
+  <div class="tab-content" id="tab-pue">
+    <div class="stat-cards" id="pue-stats"></div>
+    <div class="chart-container"><canvas id="pue-chart"></canvas></div>
+  </div>
+  <div class="tab-content" id="tab-sankey">
+    <div class="sankey-container">
+      <svg class="sankey-svg" id="sankey-svg"></svg>
+      <div class="sankey-table" id="sankey-table"></div>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-ranking">
+    <div class="ranking-container">
+      <div class="ranking-chart"><canvas id="ranking-chart"></canvas></div>
+      <div class="ranking-table-wrap" id="ranking-table"></div>
+    </div>
+  </div>
+  <div class="tab-content" id="tab-alerts">
+    <div class="alert-container">
+      <table class="alert-table" id="alert-table">
+        <thead>
+          <tr><th>时间</th><th>级别</th><th>设备</th><th>类型</th><th>消息</th><th>当前值</th><th>阈值</th><th>操作</th></tr>
+        </thead>
+        <tbody id="alert-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="right-panel" id="right-panel">
+  <div class="right-panel-header">
+    <span class="right-panel-title" id="device-detail-title">设备详情</span>
+    <button class="close-btn" id="close-detail">&times;</button>
+  </div>
+  <div class="device-info" id="device-info"></div>
+  <div class="detail-charts">
+    <div class="detail-chart-box"><div class="detail-chart-title">供回水温度(24h)</div><canvas class="detail-chart-canvas" id="dc-temp"></canvas></div>
+    <div class="detail-chart-box"><div class="detail-chart-title">流量(24h)</div><canvas class="detail-chart-canvas" id="dc-flow"></canvas></div>
+    <div class="detail-chart-box"><div class="detail-chart-title">功率(24h)</div><canvas class="detail-chart-canvas" id="dc-power"></canvas></div>
+    <div class="detail-chart-box"><div class="detail-chart-title">COP(24h)</div><canvas class="detail-chart-canvas" id="dc-cop"></canvas></div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+var state = {
+  activeTab: '3d',
+  rightPanelOpen: false,
+  selectedDevice: null,
+  devices: [],
+  pueData: [],
+  alerts: [],
+  wsConnected: false,
+  ws: null,
+  wsReconnectDelay: 1000,
+  pollTimer: null,
+  threeObjects: { scene: null, camera: null, renderer: null, controls: null, cubes: [], labels: [], raycaster: null, mouse: null, animationId: null },
+  charts: { pue: null, ranking: null, detailTemp: null, detailFlow: null, detailPower: null, detailCop: null }
+};
+
+function genDevices() {
+  var devices = [];
+  var id = 1;
+  for (var i = 0; i < 8; i++) {
+    devices.push({ id: id++, code: 'CHU-' + String(i+1).padStart(3,'0'), name: '冷水机组' + (i+1), type: 'chiller', area: '制冷站', ratedPower: 500+Math.random()*200, ratedCooling: 1800+Math.random()*400, cop: 3.5+Math.random()*3.5, power: 400+Math.random()*200, cooling: 1600+Math.random()*400, supplyTemp: 7+Math.random()*2, returnTemp: 12+Math.random()*2, flow: 80+Math.random()*40, status: Math.random()>0.1?'running':'maintenance', alert: Math.random()>0.85 });
+  }
+  for (var i = 0; i < 12; i++) {
+    devices.push({ id: id++, code: 'CT-' + String(i+1).padStart(3,'0'), name: '冷却塔' + (i+1), type: 'cooling_tower', area: '室外', ratedPower: 45+Math.random()*20, ratedCooling: 800+Math.random()*200, cop: 4+Math.random()*3, power: 30+Math.random()*20, cooling: 600+Math.random()*200, supplyTemp: 28+Math.random()*4, returnTemp: 35+Math.random()*4, flow: 120+Math.random()*60, status: Math.random()>0.1?'running':'maintenance', alert: Math.random()>0.85 });
+  }
+  for (var i = 0; i < 80; i++) {
+    devices.push({ id: id++, code: 'PAC-' + String(i+1).padStart(3,'0'), name: '精密空调' + (i+1), type: 'precision_ac', area: String.fromCharCode(65+Math.floor(i/10)) + '区', ratedPower: 30+Math.random()*20, ratedCooling: 80+Math.random()*40, cop: 3+Math.random()*4, power: 20+Math.random()*20, cooling: 60+Math.random()*40, supplyTemp: 18+Math.random()*4, returnTemp: 28+Math.random()*4, flow: 10+Math.random()*10, status: Math.random()>0.1?'running':'maintenance', alert: Math.random()>0.85 });
+  }
+  for (var i = 0; i < 20; i++) {
+    devices.push({ id: id++, code: 'CDU-' + String(i+1).padStart(3,'0'), name: '列间空调' + (i+1), type: 'cdu', area: String.fromCharCode(65+Math.floor(i/5)) + '区', ratedPower: 15+Math.random()*10, ratedCooling: 40+Math.random()*20, cop: 4+Math.random()*3, power: 10+Math.random()*10, cooling: 30+Math.random()*20, supplyTemp: 20+Math.random()*3, returnTemp: 30+Math.random()*3, flow: 5+Math.random()*5, status: Math.random()>0.1?'running':'maintenance', alert: Math.random()>0.85 });
+  }
+  return devices;
+}
+
+function genPUEHistory() {
+  var data = [];
+  var now = new Date();
+  for (var i = 23; i >= 0; i--) {
+    var t = new Date(now.getTime() - i * 3600000);
+    data.push({ time: t, pue: 1.3 + Math.random() * 0.25, itPower: 2800 + Math.random() * 400, coolingPower: 900 + Math.random() * 300, totalPower: 3700 + Math.random() * 700 });
+  }
+  return data;
+}
+
+function genAlerts() {
+  var alerts = [];
+  var types = ['温度超限','COP偏低','流量异常','振动异常','压力异常','电流超限'];
+  var msgs = ['供水温度超过设定值','COP低于预警阈值','冷冻水流量偏低','设备振动超标','系统压力异常','运行电流超过额定值'];
+  for (var i = 0; i < 15; i++) {
+    var lvl = Math.random() > 0.5 ? 1 : 2;
+    var di = Math.floor(Math.random() * state.devices.length);
+    alerts.push({
+      id: i + 1,
+      time: new Date(Date.now() - Math.random() * 86400000),
+      level: lvl,
+      device: state.devices[di].code,
+      type: types[Math.floor(Math.random()*types.length)],
+      message: msgs[Math.floor(Math.random()*msgs.length)],
+      value: (20 + Math.random()*15).toFixed(1),
+      threshold: (25 + Math.random()*10).toFixed(1),
+      acknowledged: false
+    });
+  }
+  alerts.sort(function(a,b){ return b.time - a.time; });
+  return alerts;
+}
+
+function gen24hSeries(base, variance) {
+  var data = [];
+  for (var i = 0; i < 24; i++) data.push(base - variance/2 + Math.random() * variance);
+  return data;
+}
+
+function copColor(cop) {
+  if (cop > 6) return 0x00ff88;
+  if (cop >= 4) return 0xffcc00;
+  return 0xff4455;
+}
+
+function copColorCSS(cop) {
+  if (cop > 6) return 'var(--green)';
+  if (cop >= 4) return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+function copClass(cop) {
+  if (cop > 6) return 'cop-green';
+  if (cop >= 4) return 'cop-yellow';
+  return 'cop-red';
+}
+
+function formatTime(d) {
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+
+function formatDateTime(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+}
+
+function updateClock() {
+  document.getElementById('datetime').textContent = formatDateTime(new Date());
+}
+
+function showToast(msg, type) {
+  var container = document.getElementById('toast-container');
+  var toast = document.createElement('div');
+  toast.className = 'toast toast-' + (type || 'alert');
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 5000);
+}
+
+function switchTab(tab) {
+  state.activeTab = tab;
+  document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.toggle('active', n.dataset.tab === tab); });
+  document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.toggle('active', t.id === 'tab-' + tab); });
+  if (tab === '3d' && state.threeObjects.renderer) {
+    onThreeResize();
+  }
+  if (tab === 'pue') renderPUEChart();
+  if (tab === 'sankey') renderSankey();
+  if (tab === 'ranking') renderRanking();
+  if (tab === 'alerts') renderAlerts();
+}
+
+function toggleRightPanel(open, device) {
+  state.rightPanelOpen = open;
+  state.selectedDevice = device || null;
+  document.getElementById('right-panel').classList.toggle('open', open);
+  document.getElementById('main').classList.toggle('panel-open', open);
+  if (open && device) renderDeviceDetail(device);
+}
+
+function initThree() {
+  var container = document.getElementById('three-container');
+  var w = container.clientWidth;
+  var h = container.clientHeight;
+  var objs = state.threeObjects;
+  objs.scene = new THREE.Scene();
+  objs.scene.background = new THREE.Color(0x0a0e1a);
+  objs.scene.fog = new THREE.Fog(0x0a0e1a, 60, 120);
+  objs.camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 500);
+  objs.camera.position.set(30, 35, 50);
+  objs.camera.lookAt(0, 0, 0);
+  objs.renderer = new THREE.WebGLRenderer({ antialias: true });
+  objs.renderer.setSize(w, h);
+  objs.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(objs.renderer.domElement);
+  objs.controls = new OrbitControls(objs.camera, objs.renderer.domElement);
+  objs.controls.enableDamping = true;
+  objs.controls.dampingFactor = 0.05;
+  objs.controls.maxPolarAngle = Math.PI / 2.1;
+  objs.raycaster = new THREE.Raycaster();
+  objs.mouse = new THREE.Vector2();
+
+  var ambient = new THREE.AmbientLight(0x334466, 1.5);
+  objs.scene.add(ambient);
+  var dir = new THREE.DirectionalLight(0xffffff, 1.2);
+  dir.position.set(20, 40, 30);
+  dir.castShadow = false;
+  objs.scene.add(dir);
+
+  var gridHelper = new THREE.GridHelper(80, 40, 0x1a2540, 0x111828);
+  objs.scene.add(gridHelper);
+
+  var chillers = state.devices.filter(function(d){ return d.type === 'chiller'; });
+  var towers = state.devices.filter(function(d){ return d.type === 'cooling_tower'; });
+  var pacs = state.devices.filter(function(d){ return d.type === 'precision_ac'; });
+  var cdus = state.devices.filter(function(d){ return d.type === 'cdu'; });
+
+  objs.cubes = [];
+  objs.labels = [];
+  var labelsContainer = document.getElementById('three-labels');
+
+  function addCubes(arr, rows, cols, sx, sy, sz, offX, offY, offZ) {
+    var idx = 0;
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        if (idx >= arr.length) break;
+        var dev = arr[idx];
+        var geom = new THREE.BoxGeometry(sx, sy, sz);
+        var col = copColor(dev.cop);
+        var mat = new THREE.MeshPhongMaterial({ color: col, transparent: true, opacity: 0.88, emissive: col, emissiveIntensity: 0.15 });
+        var mesh = new THREE.Mesh(geom, mat);
+        var px = offX + c * (sx + 1.5);
+        var pz = offZ + r * (sz + 1.5);
+        mesh.position.set(px, offY + sy/2, pz);
+        mesh.userData = { deviceCode: dev.code, deviceId: dev.id };
+        objs.scene.add(mesh);
+        objs.cubes.push(mesh);
+        if (dev.alert) { mesh.userData.pulse = true; }
+        idx++;
+      }
+    }
+  }
+
+  addCubes(chillers, 2, 4, 2.5, 2.5, 2.5, -9, 0, -4);
+  addCubes(towers, 3, 4, 2, 2, 2, -8.5, 0, -16);
+  addCubes(pacs, 8, 10, 0.8, 0.8, 0.8, -16, 0, 5);
+  addCubes(cdus, 4, 5, 1, 1, 1, -8, 0, 16);
+
+  function addPipeline(x1, y1, z1, x2, y2, z2, color) {
+    var points = [];
+    if (y1 !== y2) {
+      points.push(new THREE.Vector3(x1, y1, z1));
+      points.push(new THREE.Vector3(x1, (y1+y2)/2, z1));
+      points.push(new THREE.Vector3(x2, (y1+y2)/2, z2));
+      points.push(new THREE.Vector3(x2, y2, z2));
+    } else {
+      points.push(new THREE.Vector3(x1, y1, z1));
+      points.push(new THREE.Vector3(x2, y2, z2));
+    }
+    var curve = new THREE.CatmullRomCurve3(points);
+    var tubeGeom = new THREE.TubeGeometry(curve, 32, 0.08, 6, false);
+    var tubeMat = new THREE.MeshPhongMaterial({ color: color, transparent: true, opacity: 0.5 });
+    objs.scene.add(new THREE.Mesh(tubeGeom, tubeMat));
+  }
+
+  for (var i = 0; i < chillers.length; i++) {
+    var ch = chillers[i];
+    var cr = Math.floor(i/4), cc = i%4;
+    var cx = -9 + cc * 4;
+    var cz = -4 + cr * 4;
+    var ti = i < towers.length ? i : towers.length - 1;
+    var tr = Math.floor(ti/4), tc = ti%4;
+    var tx = -8.5 + tc * 3.5;
+    var tz = -16 + tr * 3.5;
+    addPipeline(cx, 2.5, cz, tx, 2, tz, 0x4488ff);
+  }
+
+  for (var i = 0; i < chillers.length; i++) {
+    var ch = chillers[i];
+    var cr = Math.floor(i/4), cc = i%4;
+    var cx = -9 + cc * 4;
+    var cz = -4 + cr * 4;
+    for (var j = 0; j < 5; j++) {
+      var pi = i * 5 + j;
+      if (pi < pacs.length) {
+        var pr = Math.floor(pi/10), pc = pi%10;
+        var px = -16 + pc * 3.2;
+        var pz = 5 + pr * 1.8;
+        addPipeline(cx, 1.25, cz + 1.25, px, 0.4, pz, 0x00ccaa);
+      }
+    }
+  }
+
+  for (var i = 0; i < chillers.length; i++) {
+    var ch = chillers[i];
+    var cr = Math.floor(i/4), cc = i%4;
+    var cx = -9 + cc * 4;
+    var cz = -4 + cr * 4;
+    for (var j = 0; j < 3; j++) {
+      var ci = i * 3 + j;
+      if (ci < cdus.length) {
+        var cduR = Math.floor(ci/5), cduC = ci%5;
+        var cduX = -8 + cduC * 3;
+        var cduZ = 16 + cduR * 2.5;
+        addPipeline(cx, 1.25, cz + 1.25, cduX, 0.5, cduZ, 0x8866ff);
+      }
+    }
+  }
+
+  objs.renderer.domElement.addEventListener('click', onThreeClick);
+  window.addEventListener('resize', onThreeResize);
+
+  animateThree();
+}
+
+function animateThree() {
+  var objs = state.threeObjects;
+  objs.animationId = requestAnimationFrame(animateThree);
+  if (state.activeTab !== '3d') return;
+  objs.controls.update();
+  var time = Date.now() * 0.003;
+  objs.cubes.forEach(function(cube) {
+    if (cube.userData.pulse) {
+      cube.material.emissiveIntensity = 0.15 + 0.2 * Math.sin(time + cube.position.x);
+    }
+  });
+  updateThreeLabels();
+  objs.renderer.render(objs.scene, objs.camera);
+}
+
+function updateThreeLabels() {
+  var objs = state.threeObjects;
+  var labelsContainer = document.getElementById('three-labels');
+  labelsContainer.innerHTML = '';
+  var w = objs.renderer.domElement.clientWidth;
+  var h = objs.renderer.domElement.clientHeight;
+  objs.cubes.forEach(function(cube) {
+    var pos = cube.position.clone();
+    pos.y += 1.5;
+    pos.project(objs.camera);
+    if (pos.z > 1) return;
+    var x = (pos.x * 0.5 + 0.5) * w;
+    var y = (-pos.y * 0.5 + 0.5) * h;
+    var label = document.createElement('div');
+    label.className = 'three-label';
+    label.textContent = cube.userData.deviceCode;
+    label.style.left = x + 'px';
+    label.style.top = y + 'px';
+    labelsContainer.appendChild(label);
+  });
+}
+
+function onThreeResize() {
+  var objs = state.threeObjects;
+  var container = document.getElementById('three-container');
+  var w = container.clientWidth;
+  var h = container.clientHeight;
+  objs.camera.aspect = w / h;
+  objs.camera.updateProjectionMatrix();
+  objs.renderer.setSize(w, h);
+}
+
+function onThreeClick(event) {
+  var objs = state.threeObjects;
+  var rect = objs.renderer.domElement.getBoundingClientRect();
+  objs.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  objs.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  objs.raycaster.setFromCamera(objs.mouse, objs.camera);
+  var intersects = objs.raycaster.intersectObjects(objs.cubes);
+  if (intersects.length > 0) {
+    var devCode = intersects[0].object.userData.deviceCode;
+    var dev = state.devices.find(function(d){ return d.code === devCode; });
+    if (dev) toggleRightPanel(true, dev);
+  }
+}
+
+function renderPUEChart() {
+  var statsEl = document.getElementById('pue-stats');
+  var latest = state.pueData[state.pueData.length - 1];
+  statsEl.innerHTML = '<div class="stat-card"><div class="stat-card-label">当前PUE</div><div class="stat-card-value" style="color:var(--accent)">' + latest.pue.toFixed(2) + '</div></div>' +
+    '<div class="stat-card"><div class="stat-card-label">IT负载(kW)</div><div class="stat-card-value" style="color:var(--accent2)">' + latest.itPower.toFixed(0) + '</div></div>' +
+    '<div class="stat-card"><div class="stat-card-label">制冷功率(kW)</div><div class="stat-card-value" style="color:var(--yellow)">' + latest.coolingPower.toFixed(0) + '</div></div>' +
+    '<div class="stat-card"><div class="stat-card-label">总功率(kW)</div><div class="stat-card-value">' + latest.totalPower.toFixed(0) + '</div></div>';
+
+  var ctx = document.getElementById('pue-chart').getContext('2d');
+  if (state.charts.pue) state.charts.pue.destroy();
+  var labels = state.pueData.map(function(d){ return formatTime(d.time); });
+  var values = state.pueData.map(function(d){ return d.pue; });
+  var gradient = ctx.createLinearGradient(0, 0, 0, 400);
+  gradient.addColorStop(0, 'rgba(0,212,255,0.3)');
+  gradient.addColorStop(1, 'rgba(0,212,255,0.01)');
+  state.charts.pue = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'PUE',
+        data: values,
+        borderColor: '#00d4ff',
+        backgroundColor: gradient,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 3,
+        pointBackgroundColor: '#00d4ff',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        annotation: undefined
+      },
+      scales: {
+        x: { ticks: { color: '#8899bb', maxTicksLimit: 12 }, grid: { color: 'rgba(30,42,69,0.5)' } },
+        y: { min: 1.2, max: 1.7, ticks: { color: '#8899bb' }, grid: { color: 'rgba(30,42,69,0.5)' } }
+      }
+    },
+    plugins: [{
+      id: 'refLines',
+      afterDraw: function(chart) {
+        var yAxis = chart.scales.y;
+        var ctx2 = chart.ctx;
+        [1.4, 1.5].forEach(function(val, idx) {
+          var y = yAxis.getPixelForValue(val);
+          ctx2.save();
+          ctx2.strokeStyle = idx === 0 ? 'rgba(255,204,0,0.5)' : 'rgba(255,68,85,0.5)';
+          ctx2.lineWidth = 1;
+          ctx2.setLineDash([5, 5]);
+          ctx2.beginPath();
+          ctx2.moveTo(chart.chartArea.left, y);
+          ctx2.lineTo(chart.chartArea.right, y);
+          ctx2.stroke();
+          ctx2.fillStyle = idx === 0 ? 'rgba(255,204,0,0.7)' : 'rgba(255,68,85,0.7)';
+          ctx2.font = '11px sans-serif';
+          ctx2.fillText('PUE ' + val, chart.chartArea.right - 50, y - 4);
+          ctx2.restore();
+        });
+      }
+    }]
+  });
+}
+
+function renderSankey() {
+  var svg = d3.select('#sankey-svg');
+  svg.selectAll('*').remove();
+  var container = document.querySelector('.sankey-container');
+  var width = container.clientWidth - 48;
+  var height = Math.max(300, container.clientHeight - 220);
+  svg.attr('width', width).attr('height', height);
+
+  var chillers = state.devices.filter(function(d){ return d.type === 'chiller'; });
+  var areas = ['A区','B区','C区','D区','E区','F区','G区','H区'];
+
+  var nodes = [];
+  chillers.forEach(function(c){ nodes.push({ name: c.code, type: 'source' }); });
+  areas.forEach(function(a){ nodes.push({ name: a, type: 'target' }); });
+
+  var links = [];
+  chillers.forEach(function(c, ci) {
+    var numLinks = 2 + Math.floor(Math.random() * 3);
+    for (var j = 0; j < numLinks; j++) {
+      var ai = (ci + j) % areas.length;
+      links.push({ source: ci, target: chillers.length + ai, value: 50 + Math.random() * 200 });
+    }
+  });
+
+  var sankeyGen = d3.sankey()
+    .nodeId(function(d){ return d.index; })
+    .nodeWidth(16)
+    .nodePadding(12)
+    .extent([[1, 1], [width - 1, height - 1]]);
+
+  var graph = sankeyGen({ nodes: nodes.map(function(d, i){ return Object.assign({}, d, { index: i }); }), links: links.map(function(d){ return Object.assign({}, d); }) });
+
+  var blueShades = ['#1a5276','#1f6f8b','#2596be','#2ea8d8','#48b8d8','#5cc8e0','#70d8e8','#8ae8f0'];
+  var greenShades = ['#1a6b3c','#1e8c4e','#23a85e','#28c46e','#32d87e','#42e88e','#52f09e','#62f8ae'];
+
+  svg.append('g')
+    .selectAll('path')
+    .data(graph.links)
+    .join('path')
+    .attr('d', d3.sankeyLinkHorizontal())
+    .attr('fill', 'none')
+    .attr('stroke', function(d){ return d.source.type === 'source' ? blueShades[d.source.index % blueShades.length] : '#4488ff'; })
+    .attr('stroke-opacity', 0.4)
+    .attr('stroke-width', function(d){ return Math.max(1, d.width); });
+
+  svg.append('g')
+    .selectAll('rect')
+    .data(graph.nodes)
+    .join('rect')
+    .attr('x', function(d){ return d.x0; })
+    .attr('y', function(d){ return d.y0; })
+    .attr('height', function(d){ return Math.max(1, d.y1 - d.y0); })
+    .attr('width', function(d){ return d.x1 - d.x0; })
+    .attr('fill', function(d){ return d.type === 'source' ? blueShades[d.index % blueShades.length] : greenShades[d.index % greenShades.length]; })
+    .attr('stroke', '#0a0e1a');
+
+  svg.append('g')
+    .selectAll('text')
+    .data(graph.nodes)
+    .join('text')
+    .attr('x', function(d){ return d.x0 < width / 2 ? d.x1 + 4 : d.x0 - 4; })
+    .attr('y', function(d){ return (d.y0 + d.y1) / 2; })
+    .attr('dy', '0.35em')
+    .attr('text-anchor', function(d){ return d.x0 < width / 2 ? 'start' : 'end'; })
+    .attr('fill', '#e0e6f0')
+    .attr('font-size', '11px')
+    .text(function(d){ return d.name; });
+
+  var tableEl = document.getElementById('sankey-table');
+  var html = '<table><thead><tr><th>区域</th><th>热负荷(kW)</th><th>分配冷量(kW)</th><th>设定温度(℃)</th><th>实际温度(℃)</th></tr></thead><tbody>';
+  areas.forEach(function(a, i) {
+    var heat = 200 + Math.random() * 300;
+    var cool = 180 + Math.random() * 280;
+    var setpoint = 24 + Math.random() * 2;
+    var actual = 23 + Math.random() * 4;
+    html += '<tr><td>' + a + '</td><td>' + heat.toFixed(0) + '</td><td>' + cool.toFixed(0) + '</td><td>' + setpoint.toFixed(1) + '</td><td>' + actual.toFixed(1) + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  tableEl.innerHTML = html;
+}
+
+function renderRanking() {
+  var sorted = state.devices.slice().sort(function(a,b){ return b.cop - a.cop; });
+
+  var ctx = document.getElementById('ranking-chart').getContext('2d');
+  if (state.charts.ranking) state.charts.ranking.destroy();
+  var top30 = sorted.slice(0, 30);
+  state.charts.ranking = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top30.map(function(d){ return d.code; }),
+      datasets: [{
+        label: 'COP',
+        data: top30.map(function(d){ return d.cop; }),
+        backgroundColor: top30.map(function(d){ return d.cop > 6 ? 'rgba(0,255,136,0.7)' : d.cop >= 4 ? 'rgba(255,204,0,0.7)' : 'rgba(255,68,85,0.7)'; }),
+        borderWidth: 0,
+        barPercentage: 0.7
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { min: 0, max: 8, ticks: { color: '#8899bb' }, grid: { color: 'rgba(30,42,69,0.5)' } },
+        y: { ticks: { color: '#8899bb', font: { size: 9 } }, grid: { display: false } }
+      }
+    }
+  });
+
+  var tableEl = document.getElementById('ranking-table');
+  var html = '<table><thead><tr><th>设备编码</th><th>设备名称</th><th>类型</th><th>COP</th><th>功率(kW)</th><th>冷量(kW)</th><th>状态</th></tr></thead><tbody>';
+  sorted.forEach(function(d) {
+    var typeMap = { chiller: '冷水机组', cooling_tower: '冷却塔', precision_ac: '精密空调', cdu: '列间空调' };
+    html += '<tr><td>' + d.code + '</td><td>' + d.name + '</td><td>' + typeMap[d.type] + '</td><td class="' + copClass(d.cop) + '">' + d.cop.toFixed(2) + '</td><td>' + d.power.toFixed(0) + '</td><td>' + d.cooling.toFixed(0) + '</td><td>' + (d.status === 'running' ? '运行' : '维护') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  tableEl.innerHTML = html;
+}
+
+function renderAlerts() {
+  var tbody = document.getElementById('alert-tbody');
+  var html = '';
+  state.alerts.forEach(function(a) {
+    html += '<tr>' +
+      '<td>' + formatDateTime(a.time) + '</td>' +
+      '<td><span class="badge badge-' + a.level + '">' + (a.level === 1 ? '一级' : '二级') + '</span></td>' +
+      '<td>' + a.device + '</td>' +
+      '<td>' + a.type + '</td>' +
+      '<td>' + a.message + '</td>' +
+      '<td>' + a.value + '</td>' +
+      '<td>' + a.threshold + '</td>' +
+      '<td><button class="ack-btn" data-id="' + a.id + '"' + (a.acknowledged ? ' disabled' : '') + '>' + (a.acknowledged ? '已确认' : '确认') + '</button></td>' +
+      '</tr>';
+  });
+  tbody.innerHTML = html;
+  tbody.querySelectorAll('.ack-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var id = parseInt(this.dataset.id);
+      acknowledgeAlert(id, this);
+    });
+  });
+}
+
+function acknowledgeAlert(id, btn) {
+  fetch('/api/alerts/' + id + '/acknowledge', { method: 'PUT' })
+    .then(function(r){ return r.json(); })
+    .then(function() {
+      var alert = state.alerts.find(function(a){ return a.id === id; });
+      if (alert) alert.acknowledged = true;
+      btn.disabled = true;
+      btn.textContent = '已确认';
+    })
+    .catch(function() {
+      var alert = state.alerts.find(function(a){ return a.id === id; });
+      if (alert) alert.acknowledged = true;
+      btn.disabled = true;
+      btn.textContent = '已确认';
+    });
+}
+
+function renderDeviceDetail(device) {
+  document.getElementById('device-detail-title').textContent = device.code + ' 详情';
+  var typeMap = { chiller: '冷水机组', cooling_tower: '冷却塔', precision_ac: '精密空调', cdu: '列间空调' };
+  var infoEl = document.getElementById('device-info');
+  infoEl.innerHTML =
+    '<div class="info-row"><span class="info-label">设备编码</span><span class="info-value">' + device.code + '</span></div>' +
+    '<div class="info-row"><span class="info-label">设备名称</span><span class="info-value">' + device.name + '</span></div>' +
+    '<div class="info-row"><span class="info-label">设备类型</span><span class="info-value">' + typeMap[device.type] + '</span></div>' +
+    '<div class="info-row"><span class="info-label">所属区域</span><span class="info-value">' + device.area + '</span></div>' +
+    '<div class="info-row"><span class="info-label">额定功率(kW)</span><span class="info-value">' + device.ratedPower.toFixed(0) + '</span></div>' +
+    '<div class="info-row"><span class="info-label">额定冷量(kW)</span><span class="info-value">' + device.ratedCooling.toFixed(0) + '</span></div>' +
+    '<div class="info-row"><span class="info-label">当前COP</span><span class="info-value ' + copClass(device.cop) + '">' + device.cop.toFixed(2) + '</span></div>' +
+    '<div class="info-row"><span class="info-label">状态</span><span class="info-value">' + (device.status === 'running' ? '运行' : '维护') + '</span></div>';
+
+  renderDetailCharts(device);
+}
+
+function renderDetailCharts(device) {
+  var hours = [];
+  for (var i = 0; i < 24; i++) hours.push(String(i).padStart(2,'0') + ':00');
+
+  var supplyData = gen24hSeries(device.supplyTemp, 2);
+  var returnData = gen24hSeries(device.returnTemp, 2);
+  var flowData = gen24hSeries(device.flow, 10);
+  var powerData = gen24hSeries(device.power, 30);
+  var copData = gen24hSeries(device.cop, 2);
+
+  var chartOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: true, labels: { color: '#8899bb', font: { size: 9 } } } },
+    scales: {
+      x: { ticks: { color: '#8899bb', font: { size: 8 }, maxTicksLimit: 8 }, grid: { color: 'rgba(30,42,69,0.3)' } },
+      y: { ticks: { color: '#8899bb', font: { size: 8 } }, grid: { color: 'rgba(30,42,69,0.3)' } }
+    }
+  };
+
+  if (state.charts.detailTemp) state.charts.detailTemp.destroy();
+  if (state.charts.detailFlow) state.charts.detailFlow.destroy();
+  if (state.charts.detailPower) state.charts.detailPower.destroy();
+  if (state.charts.detailCop) state.charts.detailCop.destroy();
+
+  state.charts.detailTemp = new Chart(document.getElementById('dc-temp').getContext('2d'), {
+    type: 'line',
+    data: { labels: hours, datasets: [
+      { label: '供水', data: supplyData, borderColor: '#00d4ff', borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
+      { label: '回水', data: returnData, borderColor: '#ff8844', borderWidth: 1.5, pointRadius: 0, tension: 0.3 }
+    ]},
+    options: chartOpts
+  });
+
+  state.charts.detailFlow = new Chart(document.getElementById('dc-flow').getContext('2d'), {
+    type: 'line',
+    data: { labels: hours, datasets: [
+      { label: '流量', data: flowData, borderColor: '#44cc88', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, backgroundColor: 'rgba(68,204,136,0.1)' }
+    ]},
+    options: chartOpts
+  });
+
+  state.charts.detailPower = new Chart(document.getElementById('dc-power').getContext('2d'), {
+    type: 'line',
+    data: { labels: hours, datasets: [
+      { label: '功率', data: powerData, borderColor: '#ffcc00', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, backgroundColor: 'rgba(255,204,0,0.1)' }
+    ]},
+    options: chartOpts
+  });
+
+  state.charts.detailCop = new Chart(document.getElementById('dc-cop').getContext('2d'), {
+    type: 'line',
+    data: { labels: hours, datasets: [
+      { label: 'COP', data: copData, borderColor: '#aa66ff', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, backgroundColor: 'rgba(170,102,255,0.1)' }
+    ]},
+    options: Object.assign({}, chartOpts, {
+      plugins: Object.assign({}, chartOpts.plugins)
+    }),
+    plugins: [{
+      id: 'copRef',
+      afterDraw: function(chart) {
+        var yAxis = chart.scales.y;
+        var ctx2 = chart.ctx;
+        [4, 6].forEach(function(val, idx) {
+          var y = yAxis.getPixelForValue(val);
+          if (y < chart.chartArea.top || y > chart.chartArea.bottom) return;
+          ctx2.save();
+          ctx2.strokeStyle = idx === 0 ? 'rgba(255,68,85,0.4)' : 'rgba(0,255,136,0.4)';
+          ctx2.lineWidth = 1;
+          ctx2.setLineDash([3, 3]);
+          ctx2.beginPath();
+          ctx2.moveTo(chart.chartArea.left, y);
+          ctx2.lineTo(chart.chartArea.right, y);
+          ctx2.stroke();
+          ctx2.restore();
+        });
+      }
+    }]
+  });
+}
+
+function initWebSocket() {
+  var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var wsUrl = protocol + '//' + location.host + '/ws';
+  try {
+    state.ws = new WebSocket(wsUrl);
+  } catch(e) {
+    scheduleReconnect();
+    return;
+  }
+  state.ws.onopen = function() {
+    state.wsConnected = true;
+    state.wsReconnectDelay = 1000;
+    updateWSStatus();
+    if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+  };
+  state.ws.onclose = function() {
+    state.wsConnected = false;
+    updateWSStatus();
+    scheduleReconnect();
+    startPolling();
+  };
+  state.ws.onerror = function() {
+    state.wsConnected = false;
+    updateWSStatus();
+  };
+  state.ws.onmessage = function(evt) {
+    try {
+      var msg = JSON.parse(evt.data);
+      handleWSMessage(msg);
+    } catch(e) {}
+  };
+}
+
+function scheduleReconnect() {
+  setTimeout(function() {
+    state.wsReconnectDelay = Math.min(state.wsReconnectDelay * 2, 30000);
+    initWebSocket();
+  }, state.wsReconnectDelay);
+}
+
+function updateWSStatus() {
+  var dot = document.getElementById('ws-dot');
+  var text = document.getElementById('ws-status-text');
+  dot.classList.toggle('connected', state.wsConnected);
+  text.textContent = state.wsConnected ? '已连接' : '未连接';
+}
+
+function handleWSMessage(msg) {
+  if (msg.type === 'device_update') {
+    msg.devices.forEach(function(upd) {
+      var dev = state.devices.find(function(d){ return d.code === upd.code; });
+      if (dev) {
+        Object.assign(dev, upd);
+        var cube = state.threeObjects.cubes.find(function(c){ return c.userData.deviceCode === upd.code; });
+        if (cube) {
+          cube.material.color.setHex(copColor(dev.cop));
+          cube.material.emissive.setHex(copColor(dev.cop));
+          cube.userData.pulse = !!dev.alert;
+        }
+      }
+    });
+    if (state.activeTab === 'ranking') renderRanking();
+  } else if (msg.type === 'pue_update') {
+    var latest = state.pueData[state.pueData.length - 1];
+    if (latest) {
+      latest.pue = msg.pue || latest.pue;
+      latest.itPower = msg.it_power || latest.itPower;
+      latest.coolingPower = msg.cooling_power || latest.coolingPower;
+      latest.totalPower = msg.total_power || latest.totalPower;
+    }
+    document.getElementById('pue-display').textContent = (msg.pue || latest.pue).toFixed(2);
+    if (state.activeTab === 'pue') renderPUEChart();
+  } else if (msg.type === 'optimization') {
+    if (state.activeTab === 'sankey') renderSankey();
+  } else if (msg.type === 'alert') {
+    state.alerts.unshift(msg.alert);
+    if (state.activeTab === 'alerts') renderAlerts();
+    showToast(msg.alert.message, msg.alert.level === 2 ? 'alert' : 'warn');
+  }
+}
+
+function startPolling() {
+  if (state.pollTimer) return;
+  state.pollTimer = setInterval(function() {
+    if (state.wsConnected) return;
+    fetch('/api/devices').then(function(r){ return r.json(); }).then(function(data) {
+      if (Array.isArray(data)) {
+        data.forEach(function(upd) {
+          var dev = state.devices.find(function(d){ return d.code === upd.code; });
+          if (dev) Object.assign(dev, upd);
+        });
+      }
+    }).catch(function(){});
+    fetch('/api/pue').then(function(r){ return r.json(); }).then(function(data) {
+      if (data && data.pue) document.getElementById('pue-display').textContent = data.pue.toFixed(2);
+    }).catch(function(){});
+  }, 30000);
+}
+
+function init() {
+  state.devices = genDevices();
+  state.pueData = genPUEHistory();
+  state.alerts = genAlerts();
+
+  updateClock();
+  setInterval(updateClock, 1000);
+  document.getElementById('pue-display').textContent = state.pueData[state.pueData.length - 1].pue.toFixed(2);
+
+  document.querySelectorAll('.nav-item').forEach(function(item) {
+    item.addEventListener('click', function() { switchTab(this.dataset.tab); });
+  });
+
+  document.getElementById('close-detail').addEventListener('click', function() { toggleRightPanel(false); });
+
+  initThree();
+
+  initWebSocket();
+  startPolling();
+}
+
+window.addEventListener('load', init);
+window.addEventListener('resize', function() {
+  if (state.activeTab === '3d') onThreeResize();
+});
+</script>
+</body>
 </html>
