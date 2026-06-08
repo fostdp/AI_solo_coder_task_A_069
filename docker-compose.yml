@@ -1,0 +1,60 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: sim-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: sim_scenario
+      POSTGRES_USER: sim
+      POSTGRES_PASSWORD: sim123
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init_postgres.sql:/docker-entrypoint-initdb.d/init_postgres.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sim -d sim_scenario"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sim-network
+
+  mongodb:
+    image: mongo:6
+    container_name: sim-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: sim
+      MONGO_INITDB_ROOT_PASSWORD: sim123
+    volumes:
+      - mongodata:/data/db
+      - ./scripts/init_mongo.js:/docker-entrypoint-initdb.d/init_mongo.js
+    networks:
+      - sim-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: sim-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: simadmin
+      MINIO_ROOT_PASSWORD: sim123456
+    command: server /data --console-address ":9001"
+    volumes:
+      - miniodata:/data
+    networks:
+      - sim-network
+
+volumes:
+  pgdata:
+  mongodata:
+  miniodata:
+
+networks:
+  sim-network:
+    driver: bridge
