@@ -1,0 +1,5 @@
+.git
+README.md
+node_modules
+**/*.pyc
+**/__pycache__

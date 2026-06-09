@@ -49,7 +49,7 @@
   },
   "server": {
     "http_port": ":8080",
-    "static_dir": "../frontend/dist",
+    "static_dir": "frontend/dist",
     "ws_ping_interval_seconds": 30,
     "ws_send_buffer": 256
   }

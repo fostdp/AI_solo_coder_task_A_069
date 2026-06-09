@@ -248,3 +248,37 @@ BEGIN
         ALTER TABLE pue_records ADD COLUMN other_infra_power FLOAT NOT NULL DEFAULT 0;
     END IF;
 END $$;
+
+CREATE OR REPLACE FUNCTION setup_compression_and_retention()
+RETURNS VOID AS $$
+BEGIN
+    ALTER TABLE device_data SET (
+        timescaledb.compress,
+        timescaledb.compress_segmentby = 'device_id',
+        timescaledb.compress_orderby = 'time DESC'
+    );
+
+    PERFORM add_compression_policy('device_data', INTERVAL '7 days');
+
+    ALTER TABLE pue_records SET (
+        timescaledb.compress,
+        timescaledb.compress_orderby = 'time DESC'
+    );
+
+    PERFORM add_compression_policy('pue_records', INTERVAL '30 days');
+
+    ALTER TABLE cooling_allocation SET (
+        timescaledb.compress,
+        timescaledb.compress_segmentby = 'area',
+        timescaledb.compress_orderby = 'time DESC'
+    );
+
+    PERFORM add_compression_policy('cooling_allocation', INTERVAL '30 days');
+
+    PERFORM add_retention_policy('device_data', INTERVAL '90 days');
+    PERFORM add_retention_policy('pue_records', INTERVAL '365 days');
+    PERFORM add_retention_policy('cooling_allocation', INTERVAL '180 days');
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT setup_compression_and_retention();

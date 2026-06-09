@@ -12,34 +12,46 @@ services:
       POSTGRES_DB: dccooling
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
-      - ../scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dccooling"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
   modbus-simulator:
     image: python:3.11-slim
     container_name: dccooling-simulator
     working_dir: /app
     volumes:
-      - ../scripts/modbus_simulator.py:/app/simulator.py
-    command: python simulator.py
+      - ./scripts/modbus_simulator.py:/app/simulator.py
+    command: >
+      python simulator.py
+      --host 0.0.0.0
+      --port 5020
+      --control-port 8081
+      --drift-interval 30
+      --chillers 8
+      --cooling-towers 12
+      --precision-ac 80
+      --cdu 20
+      --anomaly-rate 0.005
     ports:
       - "5020:5020"
-    depends_on:
-      timescaledb:
-        condition: service_healthy
+      - "8081:8081"
+    restart: unless-stopped
 
   backend:
     build:
-      context: ../backend
+      context: .
       dockerfile: Dockerfile
     container_name: dccooling-backend
     ports:
       - "8080:8080"
     environment:
+      CONFIG_PATH: /app/config.json
       DB_CONN: postgres://postgres:postgres@timescaledb:5432/dccooling?sslmode=disable
       MODBUS_ADDR: modbus-simulator:5020
       DINGTALK_WEBHOOK: ""
@@ -52,6 +64,7 @@ services:
         condition: service_healthy
       modbus-simulator:
         condition: service_started
+    restart: unless-stopped
 
 volumes:
   timescaledb_data:

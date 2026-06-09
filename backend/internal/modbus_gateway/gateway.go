@@ -15,6 +15,7 @@ import (
 
 type DeviceDataEvent struct {
 	Data        *db.DeviceData
+	DeviceType  string
 	CollectedAt time.Time
 }
 
@@ -145,7 +146,7 @@ func (g *Gateway) collectAll(ctx context.Context) {
 		}
 
 		select {
-		case g.outCh <- &DeviceDataEvent{Data: data, CollectedAt: time.Now()}:
+		case g.outCh <- &DeviceDataEvent{Data: data, DeviceType: cfg.DeviceType, CollectedAt: time.Now()}:
 		default:
 		}
 	}
