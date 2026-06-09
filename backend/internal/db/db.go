@@ -108,13 +108,22 @@ func (db *DB) GetPUERecords(ctx context.Context, hours int) ([]PUERecord, error)
 }
 
 func (db *DB) InsertAlert(ctx context.Context, alert *Alert) error {
-	_, err := db.pool.Exec(ctx,
+	err := db.pool.QueryRow(ctx,
 		`INSERT INTO alerts (time, level, device_id, alert_type, message, value, threshold, acknowledged, dingtalk_sent)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 RETURNING id`,
 		alert.Time, alert.Level, alert.DeviceID, alert.AlertType, alert.Message, alert.Value, alert.Threshold, alert.Acknowledged, alert.DingTalkSent,
-	)
+	).Scan(&alert.ID)
 	if err != nil {
 		return fmt.Errorf("insert alert: %w", err)
+	}
+	return nil
+}
+
+func (db *DB) MarkDingTalkSent(ctx context.Context, alertID int) error {
+	_, err := db.pool.Exec(ctx, "UPDATE alerts SET dingtalk_sent = true WHERE id = $1", alertID)
+	if err != nil {
+		return fmt.Errorf("mark dingtalk sent: %w", err)
 	}
 	return nil
 }

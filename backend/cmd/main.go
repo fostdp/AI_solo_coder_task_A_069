@@ -11,41 +11,55 @@ import (
 	"syscall"
 	"time"
 
-	"dc-cooling-optimizer/internal/alert"
+	"dc-cooling-optimizer/internal/alarm_notifier"
 	"dc-cooling-optimizer/internal/api"
-	"dc-cooling-optimizer/internal/collector"
+	"dc-cooling-optimizer/internal/cooling_optimizer"
+	"dc-cooling-optimizer/internal/config"
 	"dc-cooling-optimizer/internal/db"
-	"dc-cooling-optimizer/internal/optimizer"
-	"dc-cooling-optimizer/internal/pue"
+	"dc-cooling-optimizer/internal/modbus_gateway"
+	"dc-cooling-optimizer/internal/pue_calculator"
 	"dc-cooling-optimizer/internal/ws"
 )
 
 func main() {
-	dbConn := getEnv("DB_CONN", "postgres://postgres:postgres@localhost:5432/dccooling?sslmode=disable")
-	modbusAddr := getEnv("MODBUS_ADDR", "localhost:5020")
-	dingtalkWebhook := getEnv("DINGTALK_WEBHOOK", "")
-	itPowerStr := getEnv("IT_POWER", "1700")
-	distributionLossStr := getEnv("DISTRIBUTION_LOSS", "250")
-	otherInfraPowerStr := getEnv("OTHER_INFRA_POWER", "50")
-	httpPort := getEnv("HTTP_PORT", ":8080")
-
-	itPower := 1700.0
-	if v, err := strconv.ParseFloat(itPowerStr, 64); err == nil {
-		itPower = v
-	}
-	distributionLoss := 250.0
-	if v, err := strconv.ParseFloat(distributionLossStr, 64); err == nil {
-		distributionLoss = v
-	}
-	otherInfraPower := 50.0
-	if v, err := strconv.ParseFloat(otherInfraPowerStr, 64); err == nil {
-		otherInfraPower = v
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	database, err := db.New(ctx, dbConn)
+	configPath := "config.json"
+	if v := os.Getenv("CONFIG_PATH"); v != "" {
+		configPath = v
+	}
+	cfg := config.LoadOrDefault(configPath)
+
+	if v := os.Getenv("DB_CONN"); v != "" {
+		cfg.Database.ConnectionString = v
+	}
+	if v := os.Getenv("MODBUS_ADDR"); v != "" {
+		cfg.ModbusGateway.Address = v
+	}
+	if v := os.Getenv("DINGTALK_WEBHOOK"); v != "" {
+		cfg.AlarmNotifier.DingtalkWebhook = v
+	}
+	if v := os.Getenv("HTTP_PORT"); v != "" {
+		cfg.Server.HTTPPort = v
+	}
+	if v := os.Getenv("IT_POWER"); v != "" {
+		if f, err := strconv.Atoi(v); err == nil {
+			cfg.PUECalculator.ITPowerKW = f
+		}
+	}
+	if v := os.Getenv("DISTRIBUTION_LOSS"); v != "" {
+		if f, err := strconv.Atoi(v); err == nil {
+			cfg.PUECalculator.DistributionLossKW = f
+		}
+	}
+	if v := os.Getenv("OTHER_INFRA_POWER"); v != "" {
+		if f, err := strconv.Atoi(v); err == nil {
+			cfg.PUECalculator.OtherInfraPowerKW = f
+		}
+	}
+
+	database, err := db.New(ctx, cfg.Database.ConnectionString)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -54,40 +68,52 @@ func main() {
 	wsHub := ws.NewHub()
 	go wsHub.Run(ctx)
 
-	coll := collector.New(database, modbusAddr)
-	coll.DataChannel = func(data *db.DeviceData) {
-		raw, _ := json.Marshal(data)
-		wsHub.BroadcastDeviceUpdate(json.RawMessage(raw))
-	}
+	gw := modbus_gateway.New(database, &cfg.ModbusGateway, nil)
+	go gw.Start(ctx)
 
-	pueCalc := pue.New(database, itPower, distributionLoss, otherInfraPower)
-	pueCalc.OnPUEUpdate = func(pueValue, itPwr, coolingPower, distLoss, otherInfra, totalFacilityPower float64) {
-		data, _ := json.Marshal(map[string]float64{
-			"pue":                   pueValue,
-			"it_power":             itPwr,
-			"cooling_power":        coolingPower,
-			"distribution_loss":    distLoss,
-			"other_infra_power":    otherInfra,
-			"total_facility_power": totalFacilityPower,
-		})
-		wsHub.BroadcastPUEUpdate(json.RawMessage(data))
-	}
-	pueCalc.OnHighPUE = func(pueValue float64) {
-		log.Printf("WARNING: High PUE detected: %.2f", pueValue)
-	}
-
-	opt := optimizer.New(database)
-	opt.OnOptimization = func(result *optimizer.OptimizationResult) {
-		data, _ := json.Marshal(result)
-		wsHub.BroadcastOptimization(json.RawMessage(data))
-	}
-
-	alertMgr := alert.New(database, dingtalkWebhook)
-
-	go coll.Start(ctx)
+	pueCalc := pue_calculator.New(database, &cfg.PUECalculator, gw.Output())
 	go pueCalc.Start(ctx)
-	go opt.Start(ctx)
-	go alertMgr.Start(ctx)
+
+	coolOpt := cooling_optimizer.New(database, &cfg.CoolingOptimizer, pueCalc.Output())
+	go coolOpt.Start(ctx)
+
+	alarmNtf := alarm_notifier.New(database, &cfg.AlarmNotifier, gw.Output(), pueCalc.Output())
+	go alarmNtf.Start(ctx)
+
+	go func() {
+		for evt := range gw.Output() {
+			data, _ := json.Marshal(evt.Data)
+			wsHub.BroadcastDeviceUpdate(json.RawMessage(data))
+		}
+	}()
+
+	go func() {
+		for evt := range pueCalc.Output() {
+			data, _ := json.Marshal(map[string]float64{
+				"pue":                   evt.PUE,
+				"it_power":             evt.ITPower,
+				"cooling_power":        evt.CoolingPower,
+				"distribution_loss":    evt.DistributionLoss,
+				"other_infra_power":    evt.OtherInfraPower,
+				"total_facility_power": evt.TotalFacilityPower,
+			})
+			wsHub.BroadcastPUEUpdate(json.RawMessage(data))
+		}
+	}()
+
+	go func() {
+		for evt := range coolOpt.Output() {
+			data, _ := json.Marshal(evt)
+			wsHub.BroadcastOptimization(json.RawMessage(data))
+		}
+	}()
+
+	go func() {
+		for evt := range alarmNtf.Output() {
+			data, _ := json.Marshal(evt.Alert)
+			wsHub.BroadcastAlert(json.RawMessage(data))
+		}
+	}()
 
 	apiServer := api.New(database, wsHub)
 
@@ -95,28 +121,34 @@ func main() {
 	mux.HandleFunc("/ws", wsHub.HandleWebSocket)
 	mux.Handle("/api/", apiServer)
 
-	staticDir := "./frontend/dist"
+	staticDir := cfg.Server.StaticDir
 	if _, err := os.Stat(staticDir); err != nil {
-		staticDir = "../frontend/dist"
+		staticDir = "./frontend/dist"
 		if _, err := os.Stat(staticDir); err != nil {
-			staticDir = ""
+			staticDir = "../frontend/dist"
+			if _, err := os.Stat(staticDir); err != nil {
+				staticDir = ""
+			}
 		}
 	}
 	if staticDir != "" {
 		mux.Handle("/", http.FileServer(http.Dir(staticDir)))
 	}
 
+	handler := corsMiddleware(mux)
+
 	srv := &http.Server{
-		Addr:    httpPort,
-		Handler: corsMiddleware(mux),
+		Addr:    cfg.Server.HTTPPort,
+		Handler: handler,
 	}
 
-	log.Printf("Starting DC Cooling Optimizer on %s", httpPort)
-	log.Printf("  DB: %s", dbConn)
-	log.Printf("  Modbus: %s", modbusAddr)
-	log.Printf("  IT Power: %.0f kW", itPower)
-	log.Printf("  Distribution Loss: %.0f kW", distributionLoss)
-	log.Printf("  Other Infra Power: %.0f kW", otherInfraPower)
+	log.Printf("Starting DC Cooling Optimizer on %s", cfg.Server.HTTPPort)
+	log.Printf("  DB: %s", cfg.Database.ConnectionString)
+	log.Printf("  Modbus: %s", cfg.ModbusGateway.Address)
+	log.Printf("  IT Power: %.0f kW", cfg.PUECalculator.ITPowerKW)
+	log.Printf("  Distribution Loss: %.0f kW", cfg.PUECalculator.DistributionLossKW)
+	log.Printf("  Other Infra Power: %.0f kW", cfg.PUECalculator.OtherInfraPowerKW)
+	log.Printf("  Config: %s", configPath)
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -126,16 +158,16 @@ func main() {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
+	sig := <-sigCh
+	log.Printf("Received signal %v, shutting down...", sig)
 
-	log.Println("Shutting down...")
 	cancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("HTTP shutdown error: %v", err)
+		log.Printf("HTTP server shutdown error: %v", err)
 	}
 
 	log.Println("Server stopped")
@@ -146,17 +178,12 @@ func corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
-}
-
-func getEnv(key, defaultVal string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultVal
 }

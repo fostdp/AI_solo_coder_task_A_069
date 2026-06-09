@@ -1,0 +1,56 @@
+{
+  "database": {
+    "connection_string": "postgres://postgres:postgres@localhost:5432/dccooling?sslmode=disable",
+    "pool_max_conns": 20,
+    "pool_min_conns": 4
+  },
+  "modbus_gateway": {
+    "address": "localhost:5020",
+    "collect_interval_seconds": 30,
+    "dial_timeout_seconds": 5,
+    "read_timeout_seconds": 5,
+    "write_timeout_seconds": 5,
+    "idle_timeout_seconds": 60,
+    "max_conn_age_minutes": 30,
+    "reconnect_delay_seconds": 2,
+    "retry_count": 1,
+    "data_channel_buffer": 500
+  },
+  "pue_calculator": {
+    "it_power_kw": 1700,
+    "distribution_loss_kw": 250,
+    "other_infra_power_kw": 50,
+    "calculation_interval_minutes": 5,
+    "high_pue_threshold": 1.4,
+    "history_hours": 1
+  },
+  "cooling_optimizer": {
+    "optimization_interval_minutes": 10,
+    "chiller_capacity_utilization": 0.9,
+    "safety_margin": 1.1,
+    "overcool_threshold_delta": 2.0,
+    "undercool_threshold_delta": 2.0,
+    "low_cop_threshold": 4.0,
+    "history_hours": 1
+  },
+  "alarm_notifier": {
+    "check_interval_minutes": 1,
+    "level1_violation_duration_minutes": 10,
+    "level2_pue_threshold": 1.5,
+    "level2_violation_duration_minutes": 30,
+    "dingtalk_webhook": "",
+    "dingtalk_retry_count": 3,
+    "dingtalk_retry_delay_seconds": 5,
+    "device_thresholds": {
+      "min_cop": 3.0,
+      "max_supply_temp_delta": 5.0,
+      "max_power_ratio": 1.2
+    }
+  },
+  "server": {
+    "http_port": ":8080",
+    "static_dir": "../frontend/dist",
+    "ws_ping_interval_seconds": 30,
+    "ws_send_buffer": 256
+  }
+}
